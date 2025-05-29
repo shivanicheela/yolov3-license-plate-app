@@ -1,24 +1,26 @@
 import streamlit as st
-from PIL import Image
 from ultralytics import YOLO
+from PIL import Image
+import os
 
-# Load the model
-model = YOLO("best3.pt")
-
-st.title("YOLOv3 License Plate Detection")
+st.title("🚗 License Plate Detection (YOLOv8)")
 
 uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
-if uploaded_file:
-    # Display the uploaded image
+if uploaded_file is not None:
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Run YOLOv3 model
-    with st.spinner("Detecting license plate..."):
-        results = model.predict(source=image, save=False, conf=0.25)
-        boxes = results[0].boxes
+    image_path = "temp.jpg"
+    image.save(image_path)
 
-    # Draw and show results
-    results[0].show()
-    st.image(results[0].plot(), caption="Detection Result", use_column_width=True)
+    model = YOLO("best.pt")
+
+    with st.spinner("Detecting..."):
+        results = model.predict(source=image_path, save=True)
+    
+    st.success("Done!")
+
+    # Show prediction result
+    result_img_path = os.path.join(results[0].save_dir, "temp.jpg")
+    st.image(result_img_path, caption="Detected License Plate", use_column_width=True)
