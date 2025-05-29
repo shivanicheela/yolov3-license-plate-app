@@ -1,4 +1,4 @@
 streamlit
 ultralytics
+paddleocr
 opencv-python-headless
-Pillow
