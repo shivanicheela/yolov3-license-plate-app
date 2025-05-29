@@ -1,47 +1,73 @@
 import streamlit as st
+import cv2
 from ultralytics import YOLO
 from paddleocr import PaddleOCR
-from PIL import Image
 import numpy as np
-import cv2
 
-# Load YOLOv8 model and PaddleOCR
-model = YOLO("best.pt")  # Make sure best.pt is in the same repo
-ocr = PaddleOCR(use_angle_cls=True, lang='en')
+# Initialize PaddleOCR once
+ocr = PaddleOCR(use_angle_cls=True, lang='en', gpu=False)
 
-st.title("🚘 License Plate Detection and OCR")
+st.title("YOLOv3 License Plate Detection + OCR")
 
-# Upload an image
-uploaded_file = st.file_uploader("Upload a car image", type=["jpg", "jpeg", "png"])
+# Upload image
+uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
-if uploaded_file:
-    # Load and display the uploaded image
-    image = Image.open(uploaded_file).convert("RGB")
-    img_array = np.array(image)
+if uploaded_file is not None:
+    # Read image bytes from upload and convert to OpenCV format
+    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    st.image(img, caption="Uploaded Image", channels="BGR")
 
-    # Run YOLOv8 detection
-    results = model(img_array)
+    # Load YOLO model
+    model = YOLO('best.pt')  # Make sure best.pt is in the same folder or give full path
 
-    for result in results:
-        boxes = result.boxes
-        for box in boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            # Crop detected license plate region
-            plate_crop = img_array[y1:y2, x1:x2]
+    # Run detection
+    results = model.predict(source=img)
 
-            # Run OCR on the cropped region
-            ocr_result = ocr.ocr(plate_crop, cls=True)
+    # Get first result (detections for first image)
+    det = results[0].boxes  # Boxes object
 
-            if ocr_result and len(ocr_result[0]) > 0:
-                text = ocr_result[0][0][1][0]
-                st.write("🔤 Detected License Plate Text:", text)
-            else:
-                st.write("❌ No text detected on license plate")
+    # Copy image to draw boxes
+    img_with_boxes = img.copy()
 
-            # Draw bounding box on image
-            cv2.rectangle(img_array, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    detected_texts = []
 
-    # Show final image with boxes
-    st.image(img_array, caption="Detected Plate(s)", use_column_width=True)
+    # Loop over detected boxes
+    for box in det:
+        # Box coordinates (xyxy)
+        x1, y1, x2, y2 = map(int, box.xyxy[0])
+
+        # Draw rectangle on image
+        cv2.rectangle(img_with_boxes, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+        # Crop detected plate region for OCR
+        plate_img = img[y1:y2, x1:x2]
+
+        # Convert BGR to RGB for PaddleOCR
+        plate_img_rgb = cv2.cvtColor(plate_img, cv2.COLOR_BGR2RGB)
+
+        # Run OCR
+        ocr_result = ocr.ocr(plate_img_rgb)
+
+        # Extract text
+        text = ""
+        for line in ocr_result:
+            text += line[1][0] + " "
+
+        detected_texts.append(text.strip())
+
+        # Put detected text near box
+        cv2.putText(img_with_boxes, text.strip(), (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+    # Show image with boxes and OCR text
+    st.image(img_with_boxes, caption="Detected License Plates with OCR", channels="BGR")
+
+    # Show all detected texts below image
+    if detected_texts:
+        st.write("Detected Text(s):")
+        for idx, t in enumerate(detected_texts):
+            st.write(f"{idx+1}: {t}")
+    else:
+        st.write("No license plates detected.")
