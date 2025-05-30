@@ -1,32 +1,26 @@
 import streamlit as st
-import torch
+from ultralytics import YOLO
 from PIL import Image
-import numpy as np
-import tempfile
-import cv2
+import os
 
-# Load model
-@st.cache_resource
-def load_model():
-    model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt', force_reload=True)
-    return model
+st.title("🚗 License Plate Detection (YOLOv8)")
 
-model = load_model()
-
-st.title("License Plate Detection (YOLO + best.pt)")
-st.markdown("Upload an image to detect license plates.")
-
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
+    image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Convert to numpy
-    image_np = np.array(image)
+    image_path = "temp.jpg"
+    image.save(image_path)
 
-    # Perform detection
-    results = model(image_np)
+    model = YOLO("best.pt")
 
-    # Render results
-    st.image(np.squeeze(results.render()), caption="Detected Image", use_column_width=True)
+    with st.spinner("Detecting..."):
+        results = model.predict(source=image_path, save=True)
+    
+    st.success("Done!")
+
+    # Show prediction result
+    result_img_path = os.path.join(results[0].save_dir, "temp.jpg")
+    st.image(result_img_path, caption="Detected License Plate", use_column_width=True)
